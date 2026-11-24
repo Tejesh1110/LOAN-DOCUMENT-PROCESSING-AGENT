@@ -719,10 +719,55 @@ def classify_with_rule_engine(document_text: str, filename: str) -> Dict[str, An
     if any(k in text_lower for k in ["co-applicant", "coapplicant", "co applicant", "co-app"]) and any(k in text_lower for k in ["income", "salary", "payslip", "gross salary", "net pay"]):
         return {"document_type": "co_applicant_income_proof", "confidence": 0.95, "reasoning": "Detected co-applicant income proof details.", "error_type": None}
 
-    # Payslip check (evaluate before salary_certificate to avoid false matches on gross salary)
+    # Bank statement (evaluate BEFORE payslip to prevent notes like 'matches payslip' from stealing it)
+    has_fd_keywords = any(k in text_lower for k in ["fixed deposit", "term deposit", "fd statement", "fd receipt", "fd number", "fd account", "fixed_deposit"])
+    if not has_fd_keywords:
+        has_statement_indicators = any(k in filename_lower for k in [
+            "bank_statement", "04_bank_statement", "bank_account_statement", "statement_of_account", "bank_transaction_statement"
+        ]) or any(k in text_lower for k in [
+            "bank statement", "bank account statement", "account statement",
+            "bank transaction statement", "statement of account", "statement period",
+            "opening balance", "closing balance", "running balance"
+        ]) or (
+            "bank" in text_lower and any(k in text_lower for k in ["statement period", "transactions", "opening balance", "closing balance", "transaction history"])
+        )
+
+        has_bank_account_doc_indicators = any(k in filename_lower for k in [
+            "bank_account_document", "04_bank_account_document", "cancelled_cheque",
+            "bank_passbook", "bank_account_details", "bank_certificate", "bank_verification"
+        ]) or any(k in text_lower for k in [
+            "cancelled cheque", "bank account document", "bank account details",
+            "bank account verification", "bank account confirmation", "bank certificate",
+            "bank passbook"
+        ])
+
+        if has_statement_indicators and not any(k in filename_lower or k in text_lower for k in ["cancelled_cheque", "cancelled cheque"]):
+            return {"document_type": "bank_statement", "confidence": 0.95, "reasoning": "Detected bank account statement headers and transaction ledger.", "error_type": None}
+
+        if has_bank_account_doc_indicators:
+            return {"document_type": "bank_account_document", "confidence": 0.95, "reasoning": "Detected general bank account document / account ownership proof.", "error_type": None}
+
+    # Employment Certificate / Letter / Proof (evaluate BEFORE payslip to prevent offer/verification letters from being labeled payslip)
+    if any(k in text_lower for k in ["office id", "company id", "employee id", "staff id", "employee card", "staff card", "employee identity card", "company identity card", "corporate id"]) and not any(k in text_lower for k in ["employment verification", "salary details", "gross salary", "joining"]):
+        return {"document_type": "office_id", "confidence": 0.95, "reasoning": "Detected employee office identity card signatures.", "error_type": None}
+
+    if any(k in text_lower for k in ["employment certificate", "certificate of employment", "work certificate", "service certificate"]):
+        return {"document_type": "employment_certificate", "confidence": 0.95, "reasoning": "Detected employment certificate or service record.", "error_type": None}
+
+    has_emp_letter = any(k in text_lower for k in [
+        "employment verification letter", "employment verification", "offer of employment", "appointment letter",
+        "employment letter", "confirmation of employment", "employment confirmation", "joining date",
+        "date of joining", "certificate of service", "employment proof", "letter of employment",
+        "currently employed", "employed with"
+    ]) or any(k in filename_lower for k in ["employment_proof", "employment_letter", "emp_proof"])
+    if has_emp_letter and not any(k in text_lower for k in ["provident fund deduction", "total deductions", "income tax deduction"]):
+        return {"document_type": "employment_letter", "confidence": 0.95, "reasoning": "Detected employment offer, confirmation, or service certificate headers.", "error_type": None}
+
+    # Payslip check (clean any footer notes like 'matches payslip' first)
+    cleaned_payslip_text = re.sub(r'match(?:es)?\s+payslip', '', text_lower)
     payslip_keywords = ["payslip", "salary slip", "monthly payslip", "net pay", "basic salary", "pay period", "deductions"]
-    matched_payslip = [k for k in payslip_keywords if k in text_lower]
-    if matched_payslip or ("gross salary" in text_lower and any(k in text_lower for k in ["net pay", "deductions", "basic salary", "payslip"])):
+    matched_payslip = [k for k in payslip_keywords if k in cleaned_payslip_text]
+    if matched_payslip or ("gross salary" in cleaned_payslip_text and any(k in cleaned_payslip_text for k in ["net pay", "deductions", "basic salary", "payslip", "net salary"])):
         return {
             "document_type": "payslip",
             "confidence": 0.95,
@@ -756,42 +801,6 @@ def classify_with_rule_engine(document_text: str, filename: str) -> Dict[str, An
 
     if any(k in text_lower for k in ["form no. 16", "form 16", "section 203", "tax deducted at source", "certificate under section 203"]):
         return {"document_type": "form_16", "confidence": 0.95, "reasoning": "Detected Form 16 TDS certificate signatures.", "error_type": None}
-
-    has_fd_keywords = any(k in text_lower for k in ["fixed deposit", "term deposit", "fd statement", "fd receipt", "fd number", "fd account", "fixed_deposit"])
-    if not has_fd_keywords:
-        has_statement_indicators = any(k in filename_lower for k in [
-            "bank_statement", "04_bank_statement", "bank_account_statement", "statement_of_account", "bank_transaction_statement"
-        ]) or any(k in text_lower for k in [
-            "bank statement", "bank account statement", "account statement",
-            "bank transaction statement", "statement of account", "statement period",
-            "opening balance", "closing balance", "running balance"
-        ]) or (
-            "bank" in text_lower and any(k in text_lower for k in ["statement period", "transactions", "opening balance", "closing balance", "transaction history"])
-        )
-
-        has_bank_account_doc_indicators = any(k in filename_lower for k in [
-            "bank_account_document", "04_bank_account_document", "cancelled_cheque",
-            "bank_passbook", "bank_account_details", "bank_certificate", "bank_verification"
-        ]) or any(k in text_lower for k in [
-            "cancelled cheque", "bank account document", "bank account details",
-            "bank account verification", "bank account confirmation", "bank certificate",
-            "bank passbook"
-        ])
-
-        if has_statement_indicators and not any(k in filename_lower or k in text_lower for k in ["cancelled_cheque", "cancelled cheque"]):
-            return {"document_type": "bank_statement", "confidence": 0.95, "reasoning": "Detected bank account statement headers and transaction ledger.", "error_type": None}
-
-        if has_bank_account_doc_indicators:
-            return {"document_type": "bank_account_document", "confidence": 0.95, "reasoning": "Detected general bank account document / account ownership proof.", "error_type": None}
-
-    if any(k in text_lower for k in ["office id", "company id", "employee id", "staff id", "employee card", "staff card", "employee identity card", "company identity card", "corporate id"]):
-        return {"document_type": "office_id", "confidence": 0.95, "reasoning": "Detected employee office identity card signatures.", "error_type": None}
-
-    if any(k in text_lower for k in ["employment certificate", "certificate of employment", "work certificate", "service certificate"]):
-        return {"document_type": "employment_certificate", "confidence": 0.95, "reasoning": "Detected employment certificate or service record.", "error_type": None}
-
-    if any(k in text_lower for k in ["offer of employment", "appointment letter", "employment letter", "confirmation of employment", "employment confirmation", "joining date", "date of joining", "certificate of service", "employment proof", "letter of employment", "currently employed", "employed with"]):
-        return {"document_type": "employment_letter", "confidence": 0.90, "reasoning": "Detected employment offer, confirmation, or service certificate headers.", "error_type": None}
 
     if any(k in text_lower for k in ["electricity bill", "utility bill", "water bill", "lease agreement", "tenancy agreement", "broadband bill", "gas service", "service address"]):
         return {"document_type": "address_proof", "confidence": 0.90, "reasoning": "Detected utility bill or tenancy address proof document signatures.", "error_type": None}

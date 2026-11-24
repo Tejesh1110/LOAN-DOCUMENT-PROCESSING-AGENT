@@ -598,7 +598,11 @@ function LoginForm({ colors, theme, onComplete, onStartOnboarding }) {
         await authService.sendPasswordReset(email);
         setIsResetSent(true);
       } else if (isSignUp) {
-        await handleGoogleAuth();
+        if (!email.trim() || !email.includes("@")) return setError("Valid email is required");
+        if (!password.trim() || password.length < 4) return setError("Password must be at least 4 characters");
+        setIsLoading(true);
+        const { user, isNewUser } = await authService.signUpWithEmail(name, email, password);
+        onComplete(user, isNewUser);
       } else {
         if (!email.trim() || !email.includes("@")) return setError("Valid email is required");
         if (!password.trim()) return setError("Password is required");
@@ -618,7 +622,7 @@ function LoginForm({ colors, theme, onComplete, onStartOnboarding }) {
     setError("");
     setIsLoading(true);
     try {
-      const { user, isNewUser } = await authService.signInWithGoogle();
+      const { user, isNewUser } = await authService.signInWithGoogle({ email: email.trim(), name: name.trim() });
       onComplete(user, isNewUser);
     } catch (err) {
       setError(err.message);

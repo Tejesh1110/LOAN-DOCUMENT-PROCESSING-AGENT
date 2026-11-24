@@ -278,7 +278,7 @@ class RiskAnomalyDetectionAgent:
                     None
                 )
 
-            if not matched_c:
+            if not matched_c:  
                 rf = RiskFactor(
                     factor_id=f"RF-DOC-{rf_idx:03d}",
                     category="DOCUMENT_RISK",

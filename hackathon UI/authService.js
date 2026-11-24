@@ -263,26 +263,40 @@ export const authService = {
   },
 
   async signInWithGoogle(options = {}) {
-    let gEmail = "";
-    let gName = "";
+    let gEmail = (options.email || "").trim().toLowerCase();
+    let gName = (options.name || "").trim();
     let googleId = "";
-    let photoURL = "";
+    let photoURL = options.photoURL || "";
 
-    if (typeof window !== "undefined") {
-      const googleUserEmail = window.prompt("Google Sign-In: Enter your personal Google Account email address (e.g. yourname@gmail.com):");
-      
-      if (!googleUserEmail || !googleUserEmail.trim() || !googleUserEmail.includes("@")) {
-        if (googleUserEmail === null) {
-          throw new Error("Google sign-in popup was closed before completion.");
-        }
-        throw new Error("Please provide a valid Google Account email address.");
+    if (!gEmail && typeof window !== "undefined") {
+      let promptVal = null;
+      let promptBlocked = false;
+      try {
+        promptVal = window.prompt("Google Sign-In: Enter your Google Account email address (e.g. yourname@gmail.com):");
+      } catch (err) {
+        console.warn("window.prompt is not supported in this environment, using demo Google account:", err);
+        promptBlocked = true;
       }
 
-      gEmail = googleUserEmail.trim().toLowerCase();
-      const emailPrefix = gEmail.split("@")[0];
-      gName = emailPrefix.split(/[._-]/).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(" ");
-      googleId = "g_" + btoa(gEmail).replace(/=/g, "");
+      if (promptVal && promptVal.trim() && promptVal.includes("@")) {
+        gEmail = promptVal.trim().toLowerCase();
+      } else if (promptVal === null && !promptBlocked) {
+        throw new Error("Google sign-in was cancelled.");
+      } else {
+        // If prompt is not supported, blocked, or closed without valid email, fall back to demo Google user
+        gEmail = "demo.borrower@gmail.com";
+        gName = gName || "Demo Borrower";
+      }
     }
+
+    if (!gEmail) {
+      gEmail = "demo.borrower@gmail.com";
+      gName = gName || "Demo Borrower";
+    }
+
+    const emailPrefix = gEmail.split("@")[0];
+    gName = gName || emailPrefix.split(/[._-]/).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(" ");
+    googleId = "g_" + btoa(gEmail).replace(/=/g, "");
 
     const cleanEmail = gEmail.trim().toLowerCase();
     const cleanName = gName.trim() || cleanEmail.split('@')[0];
